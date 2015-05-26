@@ -10,6 +10,6 @@ This script gives an output to STDOUT and a CSV file - we're interested in 'new'
 save in your eprints bin directory
 
 Run with the following: 
-perl repo-department-report.pl <REPOSITORY>
+perl ep-dept-report.pl <REPOSITORY>
 
 you can capture the output with something like ' > dept-report.txt '
