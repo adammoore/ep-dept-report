@@ -5,11 +5,11 @@ First version from eprints wiki at http://wiki.eprints.org/w/Departmental_report
 First, make sure to refresh the user index with:
 ./epadmin reindex <REPOSITORY> user
 
-This script gives an output to STDOUT and a CSV file - we're interested in 'new' outputs that have an eprintID over 2,000,000 but I'm sure you could use another test, such as the date in the SCONUL_Report
+This script gives an output to STDOUT and a CSV file - we're interested in 'new' outputs that have an eprintID over 2,000,000 but I'm sure you could use another test, such as the date in the SCONUL_Report (http://wiki.eprints.org/w/SCONUL_Report)
 
 save in your eprints bin directory
 
-Run with the following: 
+Run with the following:
 perl ep-dept-report.pl <REPOSITORY>
 
 you can capture the output with something like ' > dept-report.txt '

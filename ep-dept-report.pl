@@ -2,13 +2,11 @@
 
 use strict;
 use warnings;
-use Data::Dumper;
 
-open DEPTREPORT,  ">dept-report.csv" or die " can't open report file dept-report.csv: $!";
-print DEPTREPORT "Department Name, Number of Staff, Total Items, Items with ID over 2M, Public Docs, Private Docs\n";
-
-my $date_value = '-2014-06-31'; #all dates up to June 31st 2014
 use EPrints;
+use Data::Dumper;
+use Text::CSV_PP; #always use a library!
+
 binmode(STDOUT, ':utf8');
 
 my $repositoryid = $ARGV[0];
@@ -16,72 +14,106 @@ die "USAGE: report.pl *repositoryid* \n" unless $repositoryid ;
 
 my $ep = EPrints->new();
 my $repo = $ep->repository( $repositoryid );
-my $deptid;
-
 die "Could not create repository object for $repositoryid\n" unless $repositoryid;
 
-my $sql = 'select distinct DEPT from "USER"';
+my $ds = $repo->dataset('archive');
+
+#first count how many users in each department
+my $department_membership = department_membership_search($repo);
+
+#now count how many publications in each department
+my $department_counts = department_counts($repo);
+
+output_report($department_membership, $department_counts);
+
+
+sub output_report
+{
+	my ($dept_membership, $dept_counts) = @_;
+
+	$csv = Text::CSV_PP->new({binary => 1});
+
+	$csv->combine('Department Name','Number of Staff','Total Items','Items with ID over 2M','Public Docs','Private Docs');
+	print($csv->string);
+
+	foreach my $dept (sort keys %{$dept_membership})
+	{
+		my @line = ();
+		push @line, $dept;
+		push @line, $dept_membership->{$dept};
+		foreach my $k (qw/ total new public private /)
+		{
+			push @line, $dept_counts->{$dept}->{$k};
+		}
+		$csv->combine(@line);
+		print($csv->string);
+	}
+}
+
+
+sub department_membership_search
+{
+	my ($repo) = @_;
+
+	my $sql = "SELECT `dept`, COUNT(*) FROM `user` GROUP BY `dept`"; #do it this way, then you won't have to do multiple searches
+
+	my $department_membership = {};
+
         my $sth = $repo->get_database->prepare( $sql );
         $sth->execute;
 
         while(my @row = $sth->fetchrow_array)
         {
-                $deptid = @row[0];
-                print "Department: $deptid\n";
-
-my $us = $repo->dataset('user');
-my $usearch = $us->prepare_search();
-
-$usearch->add_field($us->field('dept'), $deptid);
-
-my $ulist = $usearch->perform_search;
-my $ids = $ulist->ids;
-#print Dumper $ids;
-print $ulist->count." members of staff\n";
-my $ds = $repo->dataset('archive');
-
-my $counts = {};
-foreach my $id (@$ids){
-my $search = $ds->prepare_search();
-#print $id." . ";
-$search->add_field($ds->field('eprint_status'), 'archive');
-$search->add_field($ds->field('userid'), $id);
-my $list = $search->perform_search;
+		$department_membership->{$row[0]} = $row[1];
+	}
+	return $department_mambership;
+}
 
 
-$list->map( sub
+sub department_counts
 {
-        my ($repo, $ds, $dataobj, $counts) = @_;
+	my ($repo) = @_;
 
-        my @docs = $dataobj->get_all_documents;
-        my $public = 0;
-        my $private = 0;
-        foreach my $doc (@docs)
-        {
-                if ($doc->value('security') eq 'public')
-                {
-                        $public++;
-                }
-                else
-                {
-                        $private++;
-                }
-        }
+	my $counts = {};
 
-        if ($public)
-        {
-                $counts->{public}++;
-        }
-        elsif ($private)
-        {
-                $counts->{private}++;
-        }
-        if ($dataobj->get_value("eprintid") >2000000) {$counts->{new}++;}
-        $counts->{total}++;
+	my $ds = $repo->dataset('archive');
+	$ds->search()->map( sub
+	{
+		my ($repo, $ds, $dataobj, $counts) = @_;
 
-}, $counts);
+		my $user = $dataobj->get_user;
+		my $dept = $user->value('dept'); #or whichever field
+
+		my @docs = $dataobj->get_all_documents;
+		my $public = 0;
+		my $private = 0;
+		foreach my $doc (@docs)
+		{
+			if ($doc->value('security') eq 'public')
+			{
+				$public++;
+			}
+			else
+			{
+				$private++;
+			}
+		}
+
+		if ($public)
+		{
+			$counts->{$dept}->{public}++;
+		}
+		elsif ($private)
+		{
+			$counts->{$dept}->{private}++;
+		}
+		if ($dataobj->get_value("eprintid") >2000000)
+		{
+			$counts->{$dept}->{new}++;
+		}
+		$counts->{$dept}->{total}++;
+
+	}, $counts);
+
+	return $counts
 }
-print Dumper $counts;
-if ($counts->{total}){print DEPTREPORT "\""$deptid."\" , ".$usearch->count." , ".$counts->{total}." , ".$counts->{new}." , ".$counts->{public}." , ".$counts->{private}."\n";}
-}
-close DEPTREPORT;
